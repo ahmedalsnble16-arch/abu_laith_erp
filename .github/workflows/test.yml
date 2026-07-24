@@ -15,7 +15,7 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Set up Java JDK
-        uses: actions/setup-java@v3
+        uses: actions/setup-java@v4
         with:
           distribution: 'zulu'
           java-version: '17'
@@ -25,16 +25,23 @@ jobs:
         with:
           channel: 'stable'
 
-      - name: Install Dependencies
-        working-directory: AbuLaithERP
-        run: flutter pub get
-
-      - name: Build APK
-        working-directory: AbuLaithERP
-        run: flutter build apk --release
+      - name: Locate Project & Build APK
+        run: |
+          # البحث عن المجلد الذي يحتوي على pubspec.yaml الخاص بـ Flutter
+          PROJECT_DIR=$(dirname $(find . -maxdepth 3 -name "pubspec.yaml" | head -n 1))
+          echo "Found Flutter project at: $PROJECT_DIR"
+          cd "$PROJECT_DIR"
+          
+          # تثبيت الحزم والبناء
+          flutter pub get
+          flutter build apk --release
+          
+          # تجهيز المخرجات للرفع
+          mkdir -p $GITHUB_WORKSPACE/output
+          cp build/app/outputs/flutter-apk/app-release.apk $GITHUB_WORKSPACE/output/
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: abu_laith_erp_apk
-          path: AbuLaithERP/build/app/outputs/flutter-apk/app-release.apk
+          path: output/app-release.apk
