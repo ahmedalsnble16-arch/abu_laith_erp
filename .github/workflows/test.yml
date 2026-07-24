@@ -33,7 +33,7 @@ jobs:
           if [ -d lib ]; then cp -r lib/* temp_lib/ 2>/dev/null || true; fi
 
           # 2. إنشاء هيكل مشروع أندرويد وفلاتر كامل
-          flutter create --org com.abulaith --project-name abu_laith_erp . --force
+          flutter create --org com.abulaith --project-name abu_laith_erp --overwrite .
 
           # 3. نقل أكوادك إلى مجلد lib الرسمي
           cp -r temp_lib/* lib/
