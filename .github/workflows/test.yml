@@ -14,33 +14,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Organize Flutter Project Structure
-        run: |
-          mkdir -p lib
-          find . -maxdepth 1 -type f -name "*.dart" -exec mv {} lib/ \;
-          if [ -f lib/app.dart ] && [ ! -f lib/main.dart ]; then
-            cp lib/app.dart lib/main.dart
-          fi
-          if [ ! -f pubspec.yaml ]; then
-            cat << 'EOF' > pubspec.yaml
-          name: abu_laith_erp
-          description: A new Flutter project.
-          publish_to: 'none'
-          version: 1.0.0+1
-          environment:
-            sdk: '>=3.0.0 <4.0.0'
-          dependencies:
-            flutter:
-              sdk: flutter
-          dev_dependencies:
-            flutter_test:
-              sdk: flutter
-          flutter:
-            uses-material-design: true
-          EOF
-          fi
-
-      - name: Set up Java
+      - name: Set up Java JDK
         uses: actions/setup-java@v3
         with:
           distribution: 'zulu'
@@ -51,6 +25,23 @@ jobs:
         with:
           channel: 'stable'
 
+      - name: Reconstruct Flutter Project Structure
+        run: |
+          # 1. إنشاء مجلد مؤقت وتنظيم كود Dart بداخل lib
+          mkdir -p temp_lib
+          find . -maxdepth 1 -type f -name "*.dart" -exec cp {} temp_lib/ \;
+          if [ -d lib ]; then cp -r lib/* temp_lib/ 2>/dev/null || true; fi
+
+          # 2. إنشاء هيكل مشروع أندرويد وفلاتر كامل
+          flutter create --org com.abulaith --project-name abu_laith_erp . --force
+
+          # 3. نقل أكوادك إلى مجلد lib الرسمي
+          cp -r temp_lib/* lib/
+          if [ -f lib/app.dart ] && [ ! -f lib/main.dart ]; then
+            cp lib/app.dart lib/main.dart
+          fi
+          rm -rf temp_lib
+
       - name: Install Dependencies
         run: flutter pub get
 
@@ -60,5 +51,5 @@ jobs:
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: flutter-apk
+          name: abu_laith_erp_apk
           path: build/app/outputs/flutter-apk/app-release.apk
