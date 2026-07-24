@@ -11,9 +11,10 @@ jobs:
         with:
           flutter-version: '3.16.0'
       
-      - name: Navigate to project folder & build
+      - name: Build inside project folder
         run: |
           cd AbuLaithERP
+          flutter create . --project-name abu_laith_erp
           flutter pub get
           flutter analyze
           flutter build apk --release
