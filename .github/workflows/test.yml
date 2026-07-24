@@ -27,24 +27,23 @@ jobs:
 
       - name: Reconstruct Flutter Project Structure
         run: |
-          # 1. إنشاء المجلدات الفرعية المتوقعة
-          mkdir -p temp_lib/apps
+          # 1. حفظ نسخة احتياطية من كافة الأكواد المرفوعة
+          mkdir -p temp_code
+          cp -r *.dart temp_code/ 2>/dev/null || true
+          if [ -d lib ]; then cp -r lib/* temp_code/ 2>/dev/null || true; fi
 
-          # 2. نقل ملفات التطبيقات الفرعية لمجلد apps
-          find . -maxdepth 1 -type f -name "*_app.dart" -exec cp {} temp_lib/apps/ \;
-          find . -maxdepth 1 -type f -name "*.dart" ! -name "*_app.dart" -exec cp {} temp_lib/ \;
-
-          if [ -d lib ]; then cp -r lib/* temp_lib/ 2>/dev/null || true; fi
-
-          # 3. إعادة إنشاء هيكل المشروع الأساسي
+          # 2. إنشاء الهيكل الرسمي للمشروع
           flutter create --org com.abulaith --project-name abu_laith_erp --overwrite .
 
-          # 4. نقل الأكواد المنظمة إلى مجلد lib
-          cp -r temp_lib/* lib/
+          # 3. إعادة نشر الملفات في الجذر الداخلي وفي مجلد apps لضمان المسارين
+          mkdir -p lib/apps
+          cp -r temp_code/* lib/
+          cp -r temp_code/* lib/apps/
+
           if [ -f lib/app.dart ] && [ ! -f lib/main.dart ]; then
             cp lib/app.dart lib/main.dart
           fi
-          rm -rf temp_lib
+          rm -rf temp_code
 
       - name: Install Dependencies
         run: flutter pub get
