@@ -1,0 +1,128 @@
+import 'package:flutter/material.dart';
+import 'package:uuid/uuid.dart';
+import '../../config/theme.dart';
+import '../../core/database/database_helper.dart';
+import '../../data/models/product.dart';
+import '../../data/models/production_plan.dart';
+import '../../data/repositories/product_repository.dart';
+import '../../data/repositories/production_plan_repository.dart';
+
+class ProductionPlanScreen extends StatefulWidget {
+  const ProductionPlanScreen({super.key});
+
+  @override
+  State<ProductionPlanScreen> createState() => _ProductionPlanScreenState();
+}
+
+class _ProductionPlanScreenState extends State<ProductionPlanScreen> {
+  final _formKey = GlobalKey<FormState>();
+  final _productRepo = ProductRepository();
+  final _planRepo = ProductionPlanRepository();
+  List<Product> _products = [];
+  Product? _selectedProduct;
+  final _hitsController = TextEditingController();
+  final _piecesPerHitController = TextEditingController();
+  final _notesController = TextEditingController();
+  String _planDate = DateTime.now().toIso8601String().substring(0, 10);
+  List<ProductionPlan> _todayPlans = [];
+  bool _isLoading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadData();
+  }
+
+  Future<void> _loadData() async {
+    final products = await _productRepo.getAll();
+    final plans = await _planRepo.getByDate(_planDate);
+    setState(() {
+      _products = products.where((p) => p.active).toList();
+      _todayPlans = plans;
+      _isLoading = false;
+    });
+  }
+
+  int get _expectedPieces {
+    final hits = int.tryParse(_hitsController.text) ?? 0;
+    final perHit = int.tryParse(_piecesPerHitController.text) ?? 0;
+    return hits * perHit;
+  }
+
+  Future<void> _savePlan() async {
+    if (!_formKey.currentState!.validate() || _selectedProduct == null) return;
+    final now = DateTime.now().toIso8601String();
+    final plan = ProductionPlan(
+      id: const Uuid().v4(),
+      productId: _selectedProduct!.id,
+      hits: int.tryParse(_hitsController.text) ?? 0,
+      piecesPerHit: int.tryParse(_piecesPerHitController.text) ?? 0,
+      expectedPieces: _expectedPieces,
+      planDate: _planDate,
+      notes: _notesController.text,
+      createdAt: now,
+      updatedAt: now,
+    );
+    await _planRepo.add(plan);
+    _clearForm();
+    _loadData();
+  }
+
+  void _clearForm() {
+    _hitsController.clear();
+    _piecesPerHitController.clear();
+    _notesController.clear();
+    setState(() => _selectedProduct = null);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(12),
+      child: Form(
+        key: _formKey,
+        child: Column(
+          children: [
+            Card(
+              child: Padding(
+                padding: const EdgeInsets.all(12),
+                child: Column(
+                  children: [
+                    DropdownButtonFormField<Product>(
+                      value: _selectedProduct,
+                      decoration: const InputDecoration(labelText: 'المنتج'),
+                      items: _products.map((p) => DropdownMenuItem(value: p, child: Text(p.name))).toList(),
+                      onChanged: (v) => setState(() => _selectedProduct = v),
+                      validator: (v) => v == null ? 'مطلوب' : null,
+                    ),
+                    const SizedBox(height: 8),
+                    TextField(controller: _hitsController, decoration: const InputDecoration(labelText: 'عدد الضربات'), keyboardType: TextInputType.number),
+                    const SizedBox(height: 8),
+                    TextField(controller: _piecesPerHitController, decoration: const InputDecoration(labelText: 'القطع في الضربة'), keyboardType: TextInputType.number),
+                    const SizedBox(height: 8),
+                    TextField(controller: _notesController, decoration: const InputDecoration(labelText: 'ملاحظات')),
+                    const SizedBox(height: 12),
+                    Text('القطع المطلوبة: $_expectedPieces قطعة'),
+                    Text('عدد السلال: ${(_selectedProduct?.piecesPerBox ?? 1) > 0 ? _expectedPieces ~/ _selectedProduct!.piecesPerBox : 0} سلة'),
+                    const SizedBox(height: 12),
+                    ElevatedButton(onPressed: _savePlan, child: const Text('حفظ الخطة')),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
+            const Text('خطط اليوم', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+            ..._todayPlans.map((plan) {
+              final product = _products.firstWhere((p) => p.id == plan.productId, orElse: () => Product(id: '', name: '???', createdAt: '', updatedAt: ''));
+              return ListTile(
+                title: Text(product.name),
+                subtitle: Text('${plan.hits} ضربة × ${plan.piecesPerHit} = ${plan.expectedPieces} قطعة'),
+                trailing: IconButton(icon: const Icon(Icons.delete, color: Colors.red), onPressed: () => _planRepo.delete(plan.id).then((_) => _loadData())),
+              );
+            }),
+          ],
+        ),
+      ),
+    );
+  }
+}

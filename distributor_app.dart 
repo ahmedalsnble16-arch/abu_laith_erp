@@ -1,0 +1,203 @@
+import 'package:flutter/material.dart';
+import '../config/theme.dart';
+import '../core/auth/session_manager.dart';
+import '../ui/auth/login_screen.dart';
+import '../ui/distributors/distributors_screen.dart';
+import '../ui/distributors/distributor_load_screen.dart';
+import '../ui/distributors/distributor_returns_screen.dart'; // ✅ تم التصحيح
+import '../ui/distributors/distributor_settle_screen.dart';
+
+class DistributorApp extends StatelessWidget {
+  const DistributorApp({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final session = SessionManager();
+    final user = session.getCurrentUser();
+    final isDistributor = user?.roleId == 'role_distributor';
+
+    if (!session.isLoggedIn() || !isDistributor) {
+      return const LoginScreen();
+    }
+
+    return MaterialApp(
+      title: 'أبو ليث - مدير الموزعين',
+      debugShowCheckedModeBanner: false,
+      theme: AppTheme.lightTheme,
+      home: const DistributorDashboard(),
+      builder: (context, child) {
+        return Directionality(textDirection: TextDirection.rtl, child: child!);
+      },
+    );
+  }
+}
+
+class DistributorDashboard extends StatelessWidget {
+  const DistributorDashboard({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final session = SessionManager();
+    final user = session.getCurrentUser();
+
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('مدير الموزعين'),
+        centerTitle: true,
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.logout),
+            onPressed: () async {
+              await session.logout();
+              if (context.mounted) {
+                Navigator.pushReplacement(
+                  context,
+                  MaterialPageRoute(builder: (_) => const DistributorApp()),
+                );
+              }
+            },
+          ),
+        ],
+      ),
+      body: ListView(
+        padding: const EdgeInsets.all(16),
+        children: [
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Row(
+                children: [
+                  const CircleAvatar(
+                    radius: 28,
+                    backgroundColor: AppTheme.primaryColor,
+                    child: Icon(Icons.person, color: Colors.white),
+                  ),
+                  const SizedBox(width: 16),
+                  Text(
+                    'مرحباً ${user?.fullName ?? ""}',
+                    style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 20),
+          const Text(
+            'مهام الموزعين',
+            style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+          ),
+          const SizedBox(height: 12),
+          GridView.count(
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            crossAxisCount: 2,
+            crossAxisSpacing: 12,
+            mainAxisSpacing: 12,
+            childAspectRatio: 1.1,
+            children: [
+              _buildCard(
+                context,
+                Icons.local_shipping,
+                'الموزعين',
+                'قائمة الموزعين',
+                Colors.indigo,
+                () => Navigator.push(context, MaterialPageRoute(builder: (_) => const DistributorsScreen())),
+              ),
+              _buildCard(
+                context,
+                Icons.upload,
+                'تحميل',
+                'تحميل بضاعة لموزع',
+                Colors.blue,
+                () => Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => const DistributorLoadScreen(
+                      distributorId: '',
+                      distributorName: '',
+                    ),
+                  ),
+                ),
+              ),
+              _buildCard(
+                context,
+                Icons.download,
+                'مرتجع',
+                'تسجيل مرتجعات',
+                Colors.orange,
+                () => Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => const DistributorReturnsScreen( // ✅ تم التصحيح
+                      distributorId: '',
+                      distributorName: '',
+                    ),
+                  ),
+                ),
+              ),
+              _buildCard(
+                context,
+                Icons.calculate,
+                'تصفية',
+                'تصفية حساب موزع',
+                Colors.green,
+                () => Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => const DistributorSettleScreen(
+                      distributorId: '',
+                      distributorName: '',
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildCard(
+    BuildContext context, {
+    required IconData icon,
+    required String title,
+    required String subtitle,
+    required Color color,
+    required VoidCallback onTap,
+  }) {
+    return Card(
+      elevation: 1.5,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(12),
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.all(12),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              CircleAvatar(
+                radius: 22,
+                backgroundColor: color.withAlpha(30),
+                child: Icon(icon, color: color, size: 24),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                title,
+                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 4),
+              Text(
+                subtitle,
+                style: TextStyle(fontSize: 10, color: Colors.grey.shade600),
+                textAlign: TextAlign.center,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}

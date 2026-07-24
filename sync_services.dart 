@@ -1,0 +1,207 @@
+import 'dart:convert';
+import 'package:connectivity_plus/connectivity_plus.dart';
+import 'package:http/http.dart' as http;
+import 'package:uuid/uuid.dart';
+import '../../core/constants/db_constants.dart';
+import '../../core/database/database_helper.dart';
+
+class SyncService {
+  static final SyncService _instance = SyncService._internal();
+  factory SyncService() => _instance;
+  SyncService._internal();
+
+  final DatabaseHelper _dbHelper = DatabaseHelper();
+  final Uuid _uuid = const Uuid();
+
+  String _serverUrl = 'https://api.abulaith-erp.com/api';
+
+  void setServerUrl(String url) {
+    _serverUrl = url;
+  }
+
+  Future<bool> hasInternet() async {
+    final result = await Connectivity().checkConnectivity();
+    return result.contains(ConnectivityResult.mobile) ||
+        result.contains(ConnectivityResult.wifi);
+  }
+
+  Future<void> addToQueue({
+    required String tableName,
+    required String recordId,
+    required String action,
+    required Map<String, dynamic> payload,
+  }) async {
+    final db = await _dbHelper.database;
+    await db.insert(DBConstants.tableSyncQueue, {
+      'id': _uuid.v4(),
+      'table_name': tableName,
+      'record_id': recordId,
+      'action': action,
+      'payload': jsonEncode(payload),
+      'sync_status': DBConstants.syncPending,
+      'retries': 0,
+      'error_message': null,
+      'created_at': DatabaseHelper.now,
+      'synced_at': null,
+    });
+  }
+
+  Future<Map<String, dynamic>> uploadPendingData() async {
+    final db = await _dbHelper.database;
+    final pendingItems = await db.query(
+      DBConstants.tableSyncQueue,
+      where: 'sync_status = ?',
+      whereArgs: [DBConstants.syncPending],
+      orderBy: 'created_at ASC',
+      limit: 50,
+    );
+
+    int successCount = 0;
+    int errorCount = 0;
+
+    if (pendingItems.isEmpty) {
+      return {'success': true, 'message': 'لا توجد عمليات معلقة', 'sent': 0, 'errors': 0};
+    }
+
+    for (var item in pendingItems) {
+      try {
+        final response = await http.post(
+          Uri.parse('$_serverUrl/sync/upload'),
+          headers: {'Content-Type': 'application/json'},
+          body: jsonEncode({
+            'table': item['table_name'],
+            'record_id': item['record_id'],
+            'action': item['action'],
+            'payload': jsonDecode(item['payload'].toString()),
+            'device_id': 'mobile',
+            'user_id': 'admin',
+          }),
+        ).timeout(const Duration(seconds: 10));
+
+        if (response.statusCode == 200) {
+          await db.update(
+            DBConstants.tableSyncQueue,
+            {
+              'sync_status': DBConstants.syncSynced,
+              'synced_at': DatabaseHelper.now,
+            },
+            where: 'id = ?',
+            whereArgs: [item['id']],
+          );
+          successCount++;
+        } else {
+          await db.update(
+            DBConstants.tableSyncQueue,
+            {
+              'sync_status': DBConstants.syncFailed,
+              'error_message': 'HTTP ${response.statusCode}: ${response.body}',
+              'retries': (item['retries'] as int? ?? 0) + 1,
+            },
+            where: 'id = ?',
+            whereArgs: [item['id']],
+          );
+          errorCount++;
+        }
+      } catch (e) {
+        await db.update(
+          DBConstants.tableSyncQueue,
+          {
+            'sync_status': DBConstants.syncFailed,
+            'error_message': e.toString(),
+            'retries': (item['retries'] as int? ?? 0) + 1,
+          },
+          where: 'id = ?',
+          whereArgs: [item['id']],
+        );
+        errorCount++;
+      }
+    }
+
+    return {'success': errorCount == 0, 'sent': successCount, 'errors': errorCount};
+  }
+
+  Future<Map<String, dynamic>> downloadUpdates({String? lastSync}) async {
+    try {
+      final uri = lastSync != null
+          ? '$_serverUrl/sync/download?last_sync=$lastSync'
+          : '$_serverUrl/sync/download';
+
+      final response = await http.get(
+        Uri.parse(uri),
+        headers: {'Content-Type': 'application/json'},
+      ).timeout(const Duration(seconds: 15));
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        if (data['updates'] != null) {
+          final db = await _dbHelper.database;
+          for (var update in data['updates']) {
+            try {
+              final tableName = update['table'] as String;
+              final recordId = update['record_id'] as String;
+              final payload = update['payload'] as Map<String, dynamic>;
+
+              if (update['action'] == 'INSERT' || update['action'] == 'UPDATE') {
+                final existing = await db.query(tableName, where: 'id = ?', whereArgs: [recordId]);
+                if (existing.isEmpty) {
+                  await db.insert(tableName, payload);
+                } else {
+                  await db.update(tableName, payload, where: 'id = ?', whereArgs: [recordId]);
+                }
+              } else if (update['action'] == 'DELETE') {
+                await db.update(tableName, {'deleted': 1, 'updated_at': DatabaseHelper.now}, where: 'id = ?', whereArgs: [recordId]);
+              }
+            } catch (e) {
+              await db.insert(DBConstants.tableErrorLogs, {
+                'id': _uuid.v4(),
+                'error_type': 'SyncDownloadError',
+                'error_message': e.toString(),
+                'created_at': DatabaseHelper.now,
+              });
+            }
+          }
+        }
+        return {'success': true, 'updates': data['updates']?.length ?? 0};
+      }
+      return {'success': false, 'error': 'HTTP ${response.statusCode}'};
+    } catch (e) {
+      return {'success': false, 'error': e.toString()};
+    }
+  }
+
+  Future<Map<String, dynamic>> syncAll() async {
+    if (!await hasInternet()) {
+      return {'success': false, 'message': 'لا يوجد اتصال بالإنترنت'};
+    }
+
+    final uploadResult = await uploadPendingData();
+    final downloadResult = await downloadUpdates();
+
+    return {
+      'upload': uploadResult,
+      'download': downloadResult,
+    };
+  }
+
+  Future<int> getPendingCount() async {
+    final db = await _dbHelper.database;
+    final result = await db.rawQuery(
+      "SELECT COUNT(*) as count FROM ${DBConstants.tableSyncQueue} WHERE sync_status = ?",
+      [DBConstants.syncPending],
+    );
+    return (result.first['count'] as int?) ?? 0;
+  }
+
+  Future<String?> getLastSyncTime() async {
+    final db = await _dbHelper.database;
+    final result = await db.query(
+      DBConstants.tableSyncQueue,
+      where: 'sync_status = ?',
+      whereArgs: [DBConstants.syncSynced],
+      orderBy: 'synced_at DESC',
+      limit: 1,
+    );
+    if (result.isEmpty) return null;
+    return result.first['synced_at'] as String?;
+  }
+}

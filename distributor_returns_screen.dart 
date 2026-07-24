@@ -1,0 +1,145 @@
+import 'package:flutter/material.dart';
+import 'package:uuid/uuid.dart';
+import '../../config/theme.dart';
+import '../../core/constants/db_constants.dart';
+import '../../core/database/database_helper.dart';
+import '../../data/models/product.dart';
+import '../../data/repositories/product_repository.dart';
+import '../../data/repositories/distributor_repository.dart';
+
+class DistributorReturnScreen extends StatefulWidget {
+  final String distributorId;
+  final String distributorName;
+  const DistributorReturnScreen({
+    super.key,
+    required this.distributorId,
+    required this.distributorName,
+  });
+
+  @override
+  State<DistributorReturnScreen> createState() => _DistributorReturnScreenState();
+}
+
+class _DistributorReturnScreenState extends State<DistributorReturnScreen> {
+  final ProductRepository _productRepo = ProductRepository();
+  final DistributorRepository _distRepo = DistributorRepository();
+  List<Product> _products = [];
+  Map<String, int> _returned = {}; // productId -> returned quantity
+  Map<String, int> _damaged = {}; // productId -> damaged quantity
+  bool _isLoading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadProducts();
+  }
+
+  Future<void> _loadProducts() async {
+    final products = await _productRepo.getAll();
+    setState(() {
+      _products = products.where((p) => p.active).toList();
+      for (var p in _products) {
+        _returned[p.id] = 0;
+        _damaged[p.id] = 0;
+      }
+      _isLoading = false;
+    });
+  }
+
+  Future<void> _saveReturn() async {
+    final db = await DatabaseHelper().database;
+    final now = DatabaseHelper.now;
+    // يمكن ربطها بالتحميلة المفتوحة
+    final openLoads = await _distRepo.getOpenLoads(widget.distributorId);
+    final loadId = openLoads.isNotEmpty ? openLoads.first.id : null;
+
+    for (var product in _products) {
+      final returned = _returned[product.id] ?? 0;
+      final damaged = _damaged[product.id] ?? 0;
+      if (returned > 0 || damaged > 0) {
+        await db.insert(DBConstants.tableDistributorReturns, {
+          'id': const Uuid().v4(),
+          'distributor_id': widget.distributorId,
+          'load_id': loadId,
+          'product_id': product.id,
+          'sold': 0, // سيتم تحديثه عند التصفية
+          'returned': returned,
+          'damaged': damaged,
+          'collected_cash': 0,
+          'commission': 0,
+          'net_amount': 0,
+          'settlement_date': DateTime.now().toIso8601String().substring(0, 10),
+          'created_at': now,
+          'created_by': 'distributor_manager',
+          'device_id': 'mobile',
+          'sync_status': 'Pending',
+        });
+      }
+    }
+
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('تم تسجيل المرتجع'), backgroundColor: AppTheme.successColor),
+      );
+      Navigator.pop(context);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: Text('مرتجع: ${widget.distributorName}')),
+      body: _isLoading
+          ? const Center(child: CircularProgressIndicator())
+          : Column(
+              children: [
+                Expanded(
+                  child: ListView.builder(
+                    itemCount: _products.length,
+                    itemBuilder: (context, index) {
+                      final product = _products[index];
+                      return Card(
+                        child: Padding(
+                          padding: const EdgeInsets.all(8.0),
+                          child: Column(
+                            children: [
+                              Text(product.name, style: const TextStyle(fontWeight: FontWeight.bold)),
+                              Row(
+                                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                                children: [
+                                  _quantityField('مرتجع صالح', _returned[product.id] ?? 0, (v) => setState(() => _returned[product.id] = v)),
+                                  _quantityField('تالف', _damaged[product.id] ?? 0, (v) => setState(() => _damaged[product.id] = v)),
+                                ],
+                              ),
+                            ],
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+                ),
+                ElevatedButton.icon(
+                  onPressed: _saveReturn,
+                  icon: const Icon(Icons.save),
+                  label: const Text('حفظ المرتجع'),
+                ),
+              ],
+            ),
+    );
+  }
+
+  Widget _quantityField(String label, int value, Function(int) onChange) {
+    return Column(
+      children: [
+        Text(label),
+        Row(
+          children: [
+            IconButton(icon: const Icon(Icons.remove, size: 16), onPressed: () => onChange(value > 0 ? value - 1 : 0)),
+            Text('$value'),
+            IconButton(icon: const Icon(Icons.add, size: 16), onPressed: () => onChange(value + 1)),
+          ],
+        ),
+      ],
+    );
+  }
+}
