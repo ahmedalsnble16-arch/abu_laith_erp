@@ -26,15 +26,13 @@ jobs:
           channel: 'stable'
 
       - name: Install Dependencies
-        working-directory: AbuLaithERP
         run: flutter pub get
 
       - name: Build APK
-        working-directory: AbuLaithERP
         run: flutter build apk --release
 
       - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
         with:
           name: abu_laith_erp_apk
-          path: AbuLaithERP/build/app/outputs/flutter-apk/app-release.apk
+          path: build/app/outputs/flutter-apk/app-release.apk
