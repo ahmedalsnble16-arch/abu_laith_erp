@@ -25,34 +25,16 @@ jobs:
         with:
           channel: 'stable'
 
-      - name: Reconstruct Flutter Project Structure
-        run: |
-          # 1. حفظ نسخة احتياطية من كافة الأكواد المرفوعة
-          mkdir -p temp_code
-          cp -r *.dart temp_code/ 2>/dev/null || true
-          if [ -d lib ]; then cp -r lib/* temp_code/ 2>/dev/null || true; fi
-
-          # 2. إنشاء الهيكل الرسمي للمشروع
-          flutter create --org com.abulaith --project-name abu_laith_erp --overwrite .
-
-          # 3. إعادة نشر الملفات في الجذر الداخلي وفي مجلد apps لضمان المسارين
-          mkdir -p lib/apps
-          cp -r temp_code/* lib/
-          cp -r temp_code/* lib/apps/
-
-          if [ -f lib/app.dart ] && [ ! -f lib/main.dart ]; then
-            cp lib/app.dart lib/main.dart
-          fi
-          rm -rf temp_code
-
       - name: Install Dependencies
+        working-directory: AbuLaithERP
         run: flutter pub get
 
       - name: Build APK
+        working-directory: AbuLaithERP
         run: flutter build apk --release
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: abu_laith_erp_apk
-          path: build/app/outputs/flutter-apk/app-release.apk
+          path: AbuLaithERP/build/app/outputs/flutter-apk/app-release.apk
