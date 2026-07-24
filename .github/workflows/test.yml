@@ -11,10 +11,36 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout code
+      - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Set up Java JDK
+      - name: Organize Flutter Project Structure
+        run: |
+          mkdir -p lib
+          find . -maxdepth 1 -type f -name "*.dart" -exec mv {} lib/ \;
+          if [ -f lib/app.dart ] && [ ! -f lib/main.dart ]; then
+            cp lib/app.dart lib/main.dart
+          fi
+          if [ ! -f pubspec.yaml ]; then
+            cat << 'EOF' > pubspec.yaml
+          name: abu_laith_erp
+          description: A new Flutter project.
+          publish_to: 'none'
+          version: 1.0.0+1
+          environment:
+            sdk: '>=3.0.0 <4.0.0'
+          dependencies:
+            flutter:
+              sdk: flutter
+          dev_dependencies:
+            flutter_test:
+              sdk: flutter
+          flutter:
+            uses-material-design: true
+          EOF
+          fi
+
+      - name: Set up Java
         uses: actions/setup-java@v3
         with:
           distribution: 'zulu'
@@ -25,14 +51,14 @@ jobs:
         with:
           channel: 'stable'
 
-      - name: Install dependencies
+      - name: Install Dependencies
         run: flutter pub get
 
       - name: Build APK
-        run: flutter build apk --release --no-pub
+        run: flutter build apk --release
 
-      - name: Upload APK Artifact
+      - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: app-release-apk
+          name: flutter-apk
           path: build/app/outputs/flutter-apk/app-release.apk
