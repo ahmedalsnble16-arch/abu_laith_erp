@@ -1,47 +1,25 @@
-name: Flutter Build APK
-
-on:
-  push:
-    branches: [ main, رئيسي ]
-  pull_request:
-    branches: [ main, رئيسي ]
-
+name: Build APK
+on: push
 jobs:
   build:
     runs-on: ubuntu-latest
-
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Set up Java JDK
-        uses: actions/setup-java@v4
-        with:
-          distribution: 'zulu'
-          java-version: '17'
-
-      - name: Set up Flutter
+      - uses: actions/checkout@v3
+      
+      - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with:
-          channel: 'stable'
-
-      - name: Locate Project & Build APK
+          flutter-version: '3.16.0'
+      
+      - name: Navigate to project folder & build
         run: |
-          # البحث عن المجلد الذي يحتوي على pubspec.yaml الخاص بـ Flutter
-          PROJECT_DIR=$(dirname $(find . -maxdepth 3 -name "pubspec.yaml" | head -n 1))
-          echo "Found Flutter project at: $PROJECT_DIR"
-          cd "$PROJECT_DIR"
-          
-          # تثبيت الحزم والبناء
+          cd AbuLaithERP
           flutter pub get
+          flutter analyze
           flutter build apk --release
-          
-          # تجهيز المخرجات للرفع
-          mkdir -p $GITHUB_WORKSPACE/output
-          cp build/app/outputs/flutter-apk/app-release.apk $GITHUB_WORKSPACE/output/
-
+      
       - name: Upload APK
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v3
         with:
-          name: abu_laith_erp_apk
-          path: output/app-release.apk
+          name: app-release
+          path: AbuLaithERP/build/app/outputs/flutter-apk/app-release.apk
