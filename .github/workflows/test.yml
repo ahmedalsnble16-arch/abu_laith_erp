@@ -1,4 +1,4 @@
-name: Flutter CI
+name: Flutter Build APK
 
 on:
   push:
@@ -28,8 +28,11 @@ jobs:
       - name: Install dependencies
         run: flutter pub get
 
-      - name: Analyze code
-        run: flutter analyze --no-fatal-infos || true
+      - name: Build APK
+        run: flutter build apk --release --no-pub
 
-      - name: Run tests (if available)
-        run: flutter test || echo "No tests found or test failed"
+      - name: Upload APK Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-release-apk
+          path: build/app/outputs/flutter-apk/app-release.apk
